@@ -1,43 +1,27 @@
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
 const mongoose = require('mongoose');
 
 const app = express();
 
-// Enhanced CORS for Render
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-app.onrender.com'] 
-    : ['http://localhost:3000'],
-  credentials: true
-}));
-
-app.use(helmet());
+// Middleware
+app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 
-// MongoDB Connection - ONLY from environment variable
-const MONGODB_URI = process.env.MONGODB_URI;
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://haldharsinghepic_db_user:123456789101112@cluster0.tektwpr.mongodb.net/rupaya?retryWrites=true&w=majority";
 
-if (!MONGODB_URI) {
-  console.error('❌ MONGODB_URI environment variable is required');
-  process.exit(1);
-}
-
+// Connect to MongoDB
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 30000,
 })
-.then(() => console.log('✅ MongoDB Connected'))
-.catch(err => {
-  console.error('❌ MongoDB Connection Error:', err.message);
-  process.exit(1);
-});
+.then(() => console.log('MongoDB Connected'))
+.catch(err => console.log('MongoDB Error:', err.message));
 
-// Clinic Schema (same as before)
+// Clinic Schema
 const clinicSchema = new mongoose.Schema({
   name: String,
   city: String,
@@ -56,38 +40,78 @@ const clinicSchema = new mongoose.Schema({
 
 const Clinic = mongoose.model('Clinic', clinicSchema);
 
-// API endpoints (same as before)
-// ...
+// 1. Get all clinics
+app.get('/api/clinics', async (req, res) => {
+  try {
+    const { city } = req.query;
+    
+    let query = {};
+    if (city) {
+      query.city = { $regex: new RegExp(city, 'i') };
+    }
+    
+    const clinics = await Clinic.find(query);
+    
+    res.json({
+      success: true,
+      total: clinics.length,
+      clinics: clinics.map(clinic => ({
+        id: clinic._id,
+        name: clinic.name,
+        city: clinic.city,
+        address: clinic.address,
+        contact: clinic.contact,
+        email: clinic.email,
+        totalDoctors: clinic.doctors.length,
+        doctors: clinic.doctors
+      }))
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
 
-// Health check endpoint for Render
-app.get('/health', (req, res) => {
+// 2. Simple test endpoint
+app.get('/api/test', (req, res) => {
   res.json({
-    status: 'healthy',
+    success: true,
+    message: 'API is working',
     timestamp: new Date().toISOString(),
     service: 'Clinic Finder API',
-    environment: process.env.NODE_ENV || 'development',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
-// Root endpoint
+// 3. Health check (for Render)
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'Clinic Finder API on Render',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 4. Root endpoint
 app.get('/', (req, res) => {
   res.json({
     message: 'Clinic Finder API',
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    documentation: 'https://github.com/your-username/clinic-finder-api',
     endpoints: {
       health: 'GET /health',
-      getAllClinics: 'GET /api/clinics?city={city}',
-      getClinicById: 'GET /api/clinics/{id}',
-      // ... other endpoints
+      test: 'GET /api/test',
+      getClinics: 'GET /api/clinics?city=cityname',
+      getClinicById: 'GET /api/clinics/:id',
+      getClinicDoctors: 'GET /api/clinics/:id/doctors',
+      searchDoctors: 'GET /api/doctors/search?specialization=spec&city=city'
     }
   });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server is running on port ${PORT}`);
 });
